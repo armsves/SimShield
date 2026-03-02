@@ -13,6 +13,8 @@ export interface NokiaSignals {
   simSwapped?: boolean;
   /** Device was swapped recently - risk */
   deviceSwapped?: boolean;
+  /** KYC data matches operator records; undefined if not checked */
+  kycMatch?: boolean;
   /** Any API call failed - treat as uncertain */
   apiErrors: string[];
 }

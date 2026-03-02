@@ -98,6 +98,25 @@ export function calculateScore(input: ScoringInput): ScoringResult {
     });
   }
 
+  // KYC Match - identity verification
+  if (nokiaSignals.kycMatch === true) {
+    score += 15;
+    factors.push({
+      name: "kyc_match",
+      impact: "positive",
+      description: "KYC data matches operator records",
+      points: 15,
+    });
+  } else if (nokiaSignals.kycMatch === false) {
+    score -= 25;
+    factors.push({
+      name: "kyc_mismatch",
+      impact: "negative",
+      description: "KYC data does not match operator - identity mismatch",
+      points: -25,
+    });
+  }
+
   // API errors reduce confidence
   if (nokiaSignals.apiErrors.length > 0) {
     const penalty = nokiaSignals.apiErrors.length * 5;

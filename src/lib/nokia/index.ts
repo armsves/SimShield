@@ -6,4 +6,5 @@
 export { getLocation, verifyLocation } from "./location";
 export { checkSimSwap } from "./sim-swap";
 export { checkDeviceSwap } from "./device-swap";
+export { checkKycMatch } from "./kyc-match";
 export * from "./types";

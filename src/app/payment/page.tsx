@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { STORES } from "@/lib/stores";
@@ -14,15 +14,39 @@ interface ValidationResult {
   suggestBlockCard?: boolean;
 }
 
+const API_LABELS: Record<string, string> = {
+  sim_swap: "SIM Swap",
+  location_retrieval: "Location Retrieval",
+  location_verification: "Location Verification",
+  device_swap: "Device Swap",
+  kyc_match: "KYC Match",
+};
+
 export default function SimShieldPOS() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [amount, setAmount] = useState("");
-  const [selectedStoreId, setSelectedStoreId] = useState("");
+  const [selectedStoreId, setSelectedStoreId] = useState("fira-montjuic");
   const [posLat, setPosLat] = useState("");
   const [posLng, setPosLng] = useState("");
   const [loading, setLoading] = useState(false);
+  const [apiTimings, setApiTimings] = useState<{ api: string; ms: number }[]>([]);
+  const [totalLatency, setTotalLatency] = useState(0);
   const [result, setResult] = useState<ValidationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [verdictText, setVerdictText] = useState("");
+  const [denialCaseId, setDenialCaseId] = useState<string | null>(null);
+  const [denialStatus, setDenialStatus] = useState<"pending" | "resolved" | null>(null);
+  const [denialApproved, setDenialApproved] = useState<boolean | null>(null);
+
+  // Set default store on mount
+  useEffect(() => {
+    const store = STORES.find((s) => s.id === "fira-montjuic");
+    if (store) {
+      setPosLat(store.latitude.toString());
+      setPosLng(store.longitude.toString());
+      setSelectedStoreId("fira-montjuic");
+    }
+  }, []);
 
   const handleStoreChange = (storeId: string) => {
     setSelectedStoreId(storeId);
@@ -38,33 +62,24 @@ export default function SimShieldPOS() {
     }
   };
 
-  const handleGeoLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setPosLat(pos.coords.latitude.toFixed(15));
-          setPosLng(pos.coords.longitude.toFixed(15));
-          setSelectedStoreId("custom");
-        },
-        () => setError("Could not get POS location")
-      );
-    } else {
-      setError("Geolocation not supported");
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setResult(null);
+    setVerdictText("");
+    setApiTimings([]);
+    setDenialCaseId(null);
+    setDenialStatus(null);
+    setDenialApproved(null);
     setLoading(true);
+    const startTime = performance.now();
 
     const lat = parseFloat(posLat);
     const lng = parseFloat(posLng);
     const amountCents = Math.round(parseFloat(amount || "0") * 100);
 
     if (!phoneNumber || isNaN(lat) || isNaN(lng) || amountCents <= 0) {
-      setError("Please fill phone, amount, and select or enter a store location");
+      setError("Please fill phone, amount, and select a store");
       setLoading(false);
       return;
     }
@@ -81,6 +96,9 @@ export default function SimShieldPOS() {
         }),
       });
 
+      const elapsed = Math.round(performance.now() - startTime);
+      setTotalLatency(elapsed);
+
       const data = await res.json();
 
       if (!res.ok) {
@@ -95,6 +113,62 @@ export default function SimShieldPOS() {
         factors: data.factors || [],
         suggestBlockCard: data.suggestBlockCard,
       });
+      setApiTimings(data.apiTimings || []);
+
+      // On deny: trigger denial review flow (2 mock API calls)
+      if (data.decision === "deny") {
+        setDenialStatus("pending");
+        try {
+          const submitRes = await fetch("/api/denial/submit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              phoneNumber: phoneNumber.replace(/\s/g, ""),
+              amountCents,
+              posLatitude: lat,
+              posLongitude: lng,
+            }),
+          });
+          const submitData = await submitRes.json();
+          if (submitRes.ok && submitData.id) {
+            setDenialCaseId(submitData.id);
+            // Poll until resolved
+            const pollStatus = async () => {
+              const statusRes = await fetch("/api/denial/status", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: submitData.id }),
+              });
+              const statusData = await statusRes.json();
+              if (statusRes.ok && statusData.status === "resolved") {
+                setDenialStatus("resolved");
+                setDenialApproved(statusData.approved);
+                return;
+              }
+              setTimeout(pollStatus, 400);
+            };
+            pollStatus();
+          }
+        } catch {
+          setDenialStatus(null);
+        }
+      }
+
+      // Typewriter verdict from factors
+      const lines = data.factors?.map((f: { description: string }) => f.description) || [];
+      const verdict = lines.length > 0
+        ? lines.join(". ") + ` Confidence: ${data.score}%.`
+        : `Score: ${data.score}. Confidence: ${data.score}%.`;
+      let idx = 0;
+      setVerdictText("");
+      const interval = setInterval(() => {
+        if (idx < verdict.length) {
+          setVerdictText((t) => t + verdict[idx]);
+          idx++;
+        } else {
+          clearInterval(interval);
+        }
+      }, 15);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
     } finally {
@@ -106,26 +180,11 @@ export default function SimShieldPOS() {
     if (!result) return null;
     switch (result.decision) {
       case "approve":
-        return {
-          bg: "bg-[#0d8a3c]",
-          factorBg: "bg-[#0a6b2e]",
-          text: "APPROVED",
-          desc: "Process payment",
-        };
+        return { bg: "var(--approved)", text: "APPROVED", desc: "Process payment" };
       case "deny":
-        return {
-          bg: "bg-[#e00000]",
-          factorBg: "bg-[#b30000]",
-          text: "DENIED",
-          desc: "Reject transaction",
-        };
+        return { bg: "var(--blocked)", text: "BLOCKED", desc: "Reject transaction" };
       case "clarify":
-        return {
-          bg: "bg-[#e69500]",
-          factorBg: "bg-[#b87600]",
-          text: "CLARIFY",
-          desc: "Contact customer via Telegram",
-        };
+        return { bg: "var(--escalate)", text: "ESCALATED", desc: "Contact customer" };
       default:
         return null;
     }
@@ -133,237 +192,347 @@ export default function SimShieldPOS() {
 
   const config = result ? getDecisionConfig() : null;
   const showCustomCoords = selectedStoreId === "custom" || !selectedStoreId;
+  const showEscalation = result && result.decision === "clarify" && result.score >= 30 && result.score <= 70;
+
+  // Map factors to API bar colors
+  const getApiBarStatus = (apiId: string) => {
+    if (!result) return "pending";
+    const factors = result.factors;
+    if (apiId === "sim_swap") {
+      if (factors.some((f) => f.name === "sim_swap_detected")) return "risk";
+      if (factors.some((f) => f.name === "no_sim_swap")) return "clear";
+      return "flag";
+    }
+    if (apiId === "location_retrieval" || apiId === "location_verification") {
+      if (factors.some((f) => f.name === "location_match")) return "clear";
+      if (factors.some((f) => f.name === "location_mismatch")) return "risk";
+      if (factors.some((f) => f.name.includes("location"))) return "flag";
+      return "pending";
+    }
+    if (apiId === "device_swap") {
+      if (factors.some((f) => f.name === "device_swap_detected")) return "risk";
+      if (factors.some((f) => f.name === "no_device_swap")) return "clear";
+      return "flag";
+    }
+    if (apiId === "kyc_match") {
+      if (factors.some((f) => f.name === "kyc_match")) return "clear";
+      if (factors.some((f) => f.name === "kyc_mismatch")) return "risk";
+      if (factors.some((f) => f.name.includes("kyc"))) return "flag";
+      return "pending";
+    }
+    return "pending";
+  };
 
   return (
-    <div className="min-h-screen bg-[#0a0e14] flex flex-col items-center py-12 px-4 font-sans">
-      <div className="text-center mb-8">
-        <Link
-          href="/"
-          className="text-slate-500 hover:text-white text-sm mb-4 inline-block"
-        >
-          ← Back to home
+    <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col">
+      <header className="border-b border-[var(--border)] px-4 py-3 flex items-center justify-between">
+        <Link href="/" className="text-[var(--text-muted)] hover:text-[var(--teal-light)] text-sm">
+          ← Back
         </Link>
-        <Image
-          src="/SimShield-logo.png"
-          alt="SimShield"
-          width={140}
-          height={56}
-          className="mx-auto mb-4"
-        />
-        <h1 className="text-2xl font-bold text-white tracking-tight">
-          SimShield POS
-        </h1>
-        <p className="text-[#94a3b8] text-sm mt-1">
-          Payment validation via network APIs
-        </p>
-      </div>
+        <Image src="/SimShield-logo.png" alt="SimShield" width={100} height={40} />
+        <div className="w-12" />
+      </header>
 
-      <form
-        onSubmit={handleSubmit}
-        className="bg-[#0f172a] rounded-xl shadow-xl p-6 w-full max-w-md mb-6 border border-[#1e293b]"
-      >
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-slate-400 mb-1">
-            Customer phone
-          </label>
-          <input
-            type="tel"
-            value={phoneNumber}
-            onChange={(e) => setPhoneNumber(e.target.value)}
-            placeholder="+34640030004"
-            className="w-full border border-[#334155] rounded-md px-3 py-2.5 bg-[#1e293b] text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#3b82f6] focus:border-transparent"
-            disabled={loading}
-          />
-        </div>
-
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-slate-400 mb-1">
-            Amount (€)
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="10"
-            className="w-full border border-[#334155] rounded-md px-3 py-2.5 bg-[#1e293b] text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#3b82f6] focus:border-transparent"
-            disabled={loading}
-          />
-        </div>
-
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-slate-400 mb-1">
-            Store / POS location
-          </label>
-          <select
-            value={selectedStoreId}
-            onChange={(e) => handleStoreChange(e.target.value)}
-            className="w-full border border-[#334155] rounded-md px-3 py-2.5 bg-[#1e293b] text-white focus:outline-none focus:ring-2 focus:ring-[#3b82f6] focus:border-transparent"
-            disabled={loading}
-          >
-            <option value="">Select a store…</option>
-            {STORES.filter((s) => s.id !== "custom").map((store) => (
-              <option key={store.id} value={store.id}>
-                {store.name} · {store.address}
-              </option>
-            ))}
-            <option value="custom">Use custom coordinates</option>
-          </select>
-        </div>
-
-        {showCustomCoords && (
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-slate-400 mb-1">
-              Coordinates (if custom)
-            </label>
-            <div className="flex gap-2">
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0">
+        {/* Left panel — 25% */}
+        <div className="w-full lg:w-1/4 bg-[var(--bg-surface)] border-r border-[var(--border)] p-6 flex flex-col">
+          <h2 className="text-[var(--text-primary)] font-semibold mb-6">
+            Transaction context
+          </h2>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-[var(--text-secondary)] text-sm mb-1">
+                Phone number
+              </label>
               <input
-                type="text"
-                value={posLat}
-                onChange={(e) => setPosLat(e.target.value)}
-                placeholder="Latitude"
-                className="flex-1 min-w-0 border border-[#334155] rounded-md px-3 py-2.5 bg-[#1e293b] text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#3b82f6] focus:border-transparent text-sm"
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="+34640030004"
+                className="w-full bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg px-4 py-3 text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--teal)]"
                 disabled={loading}
               />
-              <input
-                type="text"
-                value={posLng}
-                onChange={(e) => setPosLng(e.target.value)}
-                placeholder="Longitude"
-                className="flex-1 min-w-0 border border-[#334155] rounded-md px-3 py-2.5 bg-[#1e293b] text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#3b82f6] focus:border-transparent text-sm"
-                disabled={loading}
-              />
-              <button
-                type="button"
-                onClick={handleGeoLocation}
-                disabled={loading}
-                className="flex-shrink-0 bg-[#1e293b] border border-[#334155] rounded-md px-3 py-2.5 flex items-center justify-center hover:bg-[#334155] transition-colors"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  className="w-4 h-4 text-red-500"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M11.54 22.351l.07.04.028.016a.76.76 0 00.724 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
             </div>
-          </div>
-        )}
-
-        {selectedStoreId && selectedStoreId !== "custom" && (
-          <p className="text-xs text-slate-500 mb-6">
-            {STORES.find((s) => s.id === selectedStoreId)?.address} ·{" "}
-            {posLat && posLng ? `${posLat.slice(0, 10)}, ${posLng.slice(0, 10)}` : ""}
-          </p>
-        )}
-
-        {error && (
-          <div className="mb-4 rounded-md bg-red-500/20 border border-red-500/50 px-4 py-2 text-red-300 text-sm">
-            {error}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-[#1e293b] text-white font-semibold py-3 px-4 rounded-md hover:bg-[#334155] transition-colors shadow-sm border border-[#334155] disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? "Validating…" : "Validate payment"}
-        </button>
-      </form>
-
-      {result && config && (
-        <div
-          className={`${config.bg} text-white rounded-xl shadow-xl p-6 w-full max-w-md text-center`}
-        >
-          <h2 className="text-3xl font-bold tracking-wide mb-1">{config.text}</h2>
-          <p className="text-lg font-medium mb-1 opacity-95">{config.desc}</p>
-          <p className="text-sm opacity-90 mb-4">Final score: {result.score}/100</p>
-
-          {/* Score breakdown */}
-          <div className="mb-6 text-left bg-black/20 rounded-md px-4 py-3">
-            <p className="text-xs font-medium uppercase tracking-wide mb-2 opacity-80">
-              Score breakdown
-            </p>
-            <p className="text-xs opacity-75 mb-2">Base: 50</p>
-            {result.factors.map((f) => (
-              <div
-                key={f.name}
-                className="flex justify-between items-start gap-2 text-xs opacity-90"
+            <div>
+              <label className="block text-[var(--text-secondary)] text-sm mb-1">
+                Amount (€)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="10"
+                className="w-full bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg px-4 py-3 text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--teal)]"
+                disabled={loading}
+              />
+            </div>
+            <div>
+              <label className="block text-[var(--text-secondary)] text-sm mb-1">
+                POS location
+              </label>
+              <select
+                value={selectedStoreId}
+                onChange={(e) => handleStoreChange(e.target.value)}
+                className="w-full bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg px-4 py-3 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--teal)]"
+                disabled={loading}
               >
-                <span className="flex-1 min-w-0">{f.description}</span>
+                {STORES.filter((s) => s.id !== "custom").map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+                <option value="custom">Custom coordinates</option>
+              </select>
+            </div>
+            {showCustomCoords && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={posLat}
+                  onChange={(e) => setPosLat(e.target.value)}
+                  placeholder="Lat"
+                  className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm"
+                  disabled={loading}
+                />
+                <input
+                  type="text"
+                  value={posLng}
+                  onChange={(e) => setPosLng(e.target.value)}
+                  placeholder="Lng"
+                  className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm"
+                  disabled={loading}
+                />
+              </div>
+            )}
+            {error && (
+              <p className="text-[var(--blocked)] text-sm">{error}</p>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-[var(--teal)] text-white font-bold py-4 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 text-lg"
+              style={{ height: "52px" }}
+            >
+              {loading ? "Verifying…" : "Run verification →"}
+            </button>
+            <p className="text-[var(--text-muted)] text-xs text-center">
+              &lt; 300ms · Live network · Zero-data broker
+            </p>
+          </form>
+        </div>
+
+        {/* Centre panel — 50% */}
+        <div className="flex-1 p-6 flex flex-col items-center justify-center min-h-[400px]">
+          {loading && (
+            <div className="w-full max-w-md space-y-3">
+              <p className="text-[var(--text-secondary)] text-sm mb-4">
+                Verifying…
+              </p>
+              <div className="animate-pulse space-y-2">
+                {["SIM Swap", "Location Retrieval", "Location Verification", "Device Swap"].map(
+                  (label) => (
+                    <div
+                      key={label}
+                      className="flex items-center justify-between text-sm text-[var(--text-muted)]"
+                    >
+                      <span>{label}</span>
+                      <span>…</span>
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
+          )}
+
+          {result && config && !loading && (
+            <div className="w-full max-w-lg space-y-6">
+              {/* API timings + signal bars */}
+              {(apiTimings.length > 0 || totalLatency > 0) && (
+                <div className="space-y-2 mb-6">
+                  <p className="text-[var(--text-secondary)] text-sm">API latency</p>
+                  {apiTimings.map((t) => (
+                    <div
+                      key={t.api}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <span className="text-[var(--text-secondary)]">
+                        ✓ {API_LABELS[t.api] || t.api}
+                      </span>
+                      <span className="text-[var(--gold)] font-mono">{t.ms}ms</span>
+                    </div>
+                  ))}
+                  <div className="border-t border-[var(--border)] pt-2 flex justify-between text-sm">
+                    <span className="text-[var(--text-muted)]">Total</span>
+                    <span className="text-[var(--gold)] font-mono font-semibold">
+                      {totalLatency}ms
+                    </span>
+                  </div>
+                </div>
+              )}
+              {/* API signal bars */}
+              <div className="grid grid-cols-4 gap-2">
+                {(apiTimings.length > 0 ? apiTimings : [{ api: "sim_swap" }, { api: "location_retrieval" }, { api: "location_verification" }, { api: "device_swap" }]).map((t) => {
+                  const apiId = typeof t === "object" && "api" in t ? t.api : String(t);
+                  const status = getApiBarStatus(apiId);
+                  const bg =
+                    status === "clear"
+                      ? "var(--approved)"
+                      : status === "risk"
+                        ? "var(--blocked)"
+                        : "var(--escalate)";
+                  return (
+                    <div key={apiId} className="text-center">
+                      <div
+                        className="h-2 rounded-full mb-1 transition-all duration-500"
+                        style={{
+                          backgroundColor: status === "pending" ? "var(--bg-elevated)" : bg,
+                          width: "100%",
+                        }}
+                      />
+                      <p className="text-[10px] text-[var(--text-muted)]">
+                        {API_LABELS[apiId] || apiId}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Circular gauge */}
+              <div className="flex justify-center">
+                <div className="relative w-40 h-40">
+                  <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="42"
+                      fill="none"
+                      stroke="var(--bg-elevated)"
+                      strokeWidth="10"
+                    />
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="42"
+                      fill="none"
+                      stroke={
+                        result.score >= 70
+                          ? "var(--approved)"
+                          : result.score >= 40
+                            ? "var(--escalate)"
+                            : "var(--blocked)"
+                      }
+                      strokeWidth="10"
+                      strokeDasharray="264"
+                      strokeDashoffset={264 - (264 * result.score) / 100}
+                      strokeLinecap="round"
+                      className="transition-all duration-1000"
+                    />
+                  </svg>
+                  <span
+                    className="absolute inset-0 flex items-center justify-center text-2xl font-bold"
+                    style={{ color: "var(--gold)" }}
+                  >
+                    {result.score}
+                  </span>
+                </div>
+              </div>
+
+              {/* AI verdict */}
+              <div
+                className="bg-[var(--navy)] rounded-lg p-4 font-mono text-sm text-[var(--nordic-gray-1)]"
+                style={{ minHeight: "80px" }}
+              >
+                {verdictText}
+                <span className="animate-pulse text-[var(--teal-light)]">|</span>
+              </div>
+
+              {/* Decision badge */}
+              <div className="flex justify-center">
                 <span
-                  className={
-                    (f.points ?? 0) >= 0
-                      ? "text-green-200 font-mono flex-shrink-0"
-                      : "text-red-200 font-mono flex-shrink-0"
-                  }
+                  className="inline-block px-8 py-4 rounded-full text-xl font-bold text-white"
+                  style={{ backgroundColor: config.bg }}
                 >
-                  {f.points !== undefined && f.points >= 0 ? "+" : ""}
-                  {f.points}
+                  {config.text}
                 </span>
               </div>
-            ))}
-          </div>
 
-          {result.suggestBlockCard && result.decision === "deny" && (
-            <div className="mb-4 flex items-center justify-center gap-2 bg-black/20 rounded-md px-4 py-2 text-sm">
-              <svg
-                className="w-4 h-4 flex-shrink-0"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              Suggest processor block this card
+              {result.suggestBlockCard && result.decision === "deny" && (
+                <p className="text-center text-[var(--blocked)] text-sm">
+                  ⚠ Suggest processor block this card
+                </p>
+              )}
+
+              {/* Denial review flow — 2 API calls */}
+              {result.decision === "deny" && (denialStatus === "pending" || denialStatus === "resolved") && (
+                <div className="mt-4 p-4 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border)]">
+                  <p className="text-[var(--text-secondary)] text-sm font-medium mb-2">
+                    Denial review
+                  </p>
+                  {denialStatus === "pending" && (
+                    <p className="text-[var(--text-muted)] text-sm animate-pulse">
+                      Submitting case… polling for resolution…
+                    </p>
+                  )}
+                  {denialStatus === "resolved" && (
+                    <p
+                      className="text-sm font-semibold"
+                      style={{
+                        color: denialApproved ? "var(--approved)" : "var(--blocked)",
+                      }}
+                    >
+                      {denialApproved
+                        ? "Overturned — approved by review"
+                        : "Confirmed — block upheld"}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          {result.decision === "clarify" && (
-            <p className="mb-4 rounded-md bg-black/20 px-4 py-2 text-sm">
-              → Trigger Telegram LLM chatbot to contact customer
-            </p>
-          )}
-
-          {result.factors.length > 0 && (
-            <div className="text-left">
-              <p className="text-sm font-medium mb-2 opacity-90">Factors:</p>
-              <div className="flex flex-col gap-2">
-                {result.factors.map((f) => (
-                  <div
-                    key={f.name}
-                    className={`${config.factorBg} rounded-md px-4 py-2 text-sm flex justify-between items-center gap-3`}
-                  >
-                    <span>{f.description}</span>
-                    {f.points !== undefined && (
-                      <span className="font-mono text-sm opacity-90 whitespace-nowrap">
-                        {f.points >= 0 ? "+" : ""}
-                        {f.points}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+          {!loading && !result && (
+            <p className="text-[var(--text-muted)]">Run verification to see result</p>
           )}
         </div>
-      )}
 
-      <div className="mt-8 text-xs text-slate-500 text-center">
-        <Link href="/" className="text-slate-400 hover:text-white transition-colors">
-          ← Back to SimShield
-        </Link>
+        {/* Right panel — 25% */}
+        <div className="w-full lg:w-1/4 bg-[var(--bg-surface)] border-l border-[var(--border)] p-6">
+          <h2 className="text-[var(--text-primary)] font-semibold mb-4">
+            Escalation brief
+          </h2>
+          {result && showEscalation ? (
+            <div className="space-y-4">
+              <p className="text-[var(--text-secondary)] text-sm">
+                Score in 30–70 range. Manual review recommended. Customer can be
+                contacted via Telegram to confirm transaction.
+              </p>
+              <div className="flex flex-col gap-2">
+                <button className="w-full py-2 rounded-lg border border-[var(--blocked)] text-[var(--blocked)] text-sm font-medium hover:bg-[var(--blocked)]/10">
+                  Block
+                </button>
+                <button className="w-full py-2 rounded-lg border border-[var(--approved)] text-[var(--approved)] text-sm font-medium hover:bg-[var(--approved)]/10">
+                  Approve
+                </button>
+                <button className="w-full py-2 rounded-lg border border-[var(--teal)] text-[var(--teal-light)] text-sm font-medium hover:bg-[var(--teal)]/10">
+                  Call customer
+                </button>
+              </div>
+              <p className="text-[var(--text-muted)] text-xs">
+                Telegram / Slack integration
+              </p>
+            </div>
+          ) : result ? (
+            <p className="text-[var(--text-muted)] text-sm">
+              Agent decided autonomously.
+            </p>
+          ) : (
+            <p className="text-[var(--text-muted)] text-sm">
+              Result will appear here after verification.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

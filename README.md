@@ -1,21 +1,35 @@
 # SimShield
 
-Payment validation for physical POS using Nokia Network as Code APIs. Validates transactions by comparing the customer's SIM location with the POS location, checking for SIM/device swaps, and scoring risk before processing payment.
+Payment validation for physical POS using Nokia Network as Code APIs. Validates transactions by comparing the customer's SIM location with the POS location, checking for SIM/device swaps, verifying identity against operator KYC records, and scoring risk before processing payment.
+
+## Business Case
+
+Physical POS fraud—especially SIM swap attacks—costs retailers millions in chargebacks and lost trust. SimShield uses live network signals to verify that the person at the terminal is the legitimate cardholder before payment is authorized.
+
+| Problem | SimShield solution |
+|--------|--------------------|
+| **SIM swap fraud** | Network detects recent SIM change; blocks high-risk transactions before they occur |
+| **Remote / card-not-present fraud** | Location APIs confirm the phone is physically at the POS |
+| **Identity mismatch** | KYC Match verifies customer data against operator records |
+| **Device takeover** | Device Swap flags recent device changes that may indicate account compromise |
+
+**Outcomes:** fewer chargebacks, lower fraud losses, faster checkout (no extra customer friction), and compliance-ready identity verification for high-value transactions.
 
 ## Tech Stack
 
 - **Next.js** (App Router) + TypeScript + Tailwind
 - **Serverless APIs** for validation
-- **Nokia Network as Code** – Location Retrieval, Location Verification, SIM Swap, Device Swap
+- **Nokia Network as Code** – 5 APIs: Location Retrieval, Location Verification, SIM Swap, Device Swap, KYC Match
 
 ## Flow
 
-1. **POS** collects: customer phone, amount, POS location
-2. **Validate** → Serverless API calls Nokia APIs
+1. **POS** collects: customer phone, amount, POS location (optionally KYC data for identity verification)
+2. **Validate** → Serverless API calls Nokia Network as Code APIs
 3. **Score** computed from:
    - SIM location vs POS (strongest signal)
    - Recent SIM swap
    - Recent device swap
+   - KYC match (identity vs operator records)
    - API availability
 4. **Decision**:
    - **Approve** (score ≥ 70) → Process payment
@@ -27,11 +41,11 @@ Payment validation for physical POS using Nokia Network as Code APIs. Validates 
 ```bash
 npm install
 cp .env.example .env
-# Add NOKIA_API_TOKEN from https://developer.networkascode.nokia.io/
+# Add NOKIA_RAPID_API_KEY from https://developer.networkascode.nokia.io/ → API Hub
 npm run dev
 ```
 
-Without `NOKIA_API_TOKEN`, the app runs in **sandbox mode** with mock Nokia responses.
+Without `NOKIA_RAPID_API_KEY`, the app runs in **sandbox mode** with mock Nokia responses.
 
 ## Project Structure
 
@@ -40,9 +54,11 @@ src/
 ├── app/
 │   ├── api/
 │   │   ├── validate-payment/route.ts   # POST – main validation API
+│   │   ├── denial/submit|status/       # Denial review flow
 │   │   └── health/route.ts             # GET – health check
 │   ├── layout.tsx
-│   ├── page.tsx                        # POS UI
+│   ├── page.tsx                        # Homepage
+│   ├── payment/page.tsx               # POS demo
 │   └── globals.css
 ├── lib/
 │   ├── nokia/                          # Nokia API client
@@ -50,7 +66,9 @@ src/
 │   │   ├── location.ts
 │   │   ├── sim-swap.ts
 │   │   ├── device-swap.ts
+│   │   ├── kyc-match.ts
 │   │   └── types.ts
+│   ├── kyc-data.ts                    # Test KYC for demo (+34640030004)
 │   ├── scoring/                       # Risk scoring engine
 │   │   ├── engine.ts
 │   │   └── types.ts
@@ -68,9 +86,20 @@ src/
   "posLatitude": 41.3851,
   "posLongitude": 2.1734,
   "amountCents": 5999,
-  "transactionId": "optional"
+  "transactionId": "optional",
+  "kycData": {
+    "idDocument": "ABC123",
+    "name": "JOHN DOE",
+    "address": "...",
+    "postalCode": "...",
+    "country": "ES",
+    "birthdate": "1990-01-01",
+    "email": "john@example.com"
+  }
 }
 ```
+
+`kycData` is optional. For test number `+34640030004`, test KYC is auto-applied.
 
 **Response:**
 ```json
@@ -86,9 +115,12 @@ src/
 
 | API | Purpose |
 |-----|---------|
-| Location Retrieval | Get SIM geolocation from network |
-| Location Verification | Compare SIM location vs POS |
-| SIM Swap | Detect recent SIM change |
-| Device Swap | Detect recent device change |
+| **Location Retrieval** | Get SIM geolocation from network |
+| **Location Verification** | Compare SIM location vs POS |
+| **SIM Swap** | Detect recent SIM change (fraud indicator) |
+| **Device Swap** | Detect recent device change (fraud indicator) |
+| **KYC Match** | Verify customer data against operator records |
+
+All APIs via [Nokia Network as Code](https://networkascode.nokia.io/) (GSMA CAMARA Open Gateway).
 
 Open Gateway Hackathon 2026 · GSMA CAMARA

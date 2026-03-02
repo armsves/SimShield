@@ -91,3 +91,36 @@ export interface DeviceStatusResponse {
   connected: boolean;
   networkType?: string;
 }
+
+/** KYC Match - verify customer data against operator records */
+export interface KycMatchRequest {
+  phoneNumber: string;
+  idDocument: string;
+  name?: string;
+  givenName?: string;
+  familyName?: string;
+  familyNameAtBirth?: string;
+  address?: string;
+  streetName?: string;
+  streetNumber?: string;
+  postalCode?: string;
+  region?: string;
+  locality?: string;
+  country?: string;
+  birthdate?: string;
+  email?: string;
+  gender?: string;
+}
+
+export interface KycMatchResponse {
+  idDocumentMatch?: "true" | "false" | "not_available";
+  nameMatch?: "true" | "false" | "not_available";
+  givenNameMatch?: "true" | "false" | "not_available";
+  familyNameMatch?: "true" | "false" | "not_available";
+  addressMatch?: "true" | "false" | "not_available";
+  postalCodeMatch?: "true" | "false" | "not_available";
+  birthdateMatch?: "true" | "false" | "not_available";
+  emailMatch?: "true" | "false" | "not_available";
+  countryMatch?: "true" | "false" | "not_available";
+  [key: string]: string | undefined;
+}
