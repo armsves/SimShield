@@ -3,3 +3,9 @@ google-genai
 python-dotenv
 mcp
 httpx
+fastapi
+uvicorn
+google-cloud-firestore
+pytest
+pytest-asyncio
+pytest-mock
