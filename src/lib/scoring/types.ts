@@ -41,4 +41,6 @@ export interface ScoringFactor {
   impact: "positive" | "negative" | "neutral";
   /** Human-readable description */
   description: string;
+  /** Points added or subtracted from score for this factor */
+  points: number;
 }

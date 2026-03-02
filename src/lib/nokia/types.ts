@@ -55,8 +55,8 @@ export interface SimSwapRequest {
 }
 
 export interface SimSwapResponse {
-  /** True if SIM was swapped in the period */
-  swapped: boolean;
+  /** True if SIM was swapped in the period; undefined if API skipped (e.g. 403) */
+  swapped?: boolean;
   /** When the swap occurred (ISO timestamp) if swapped */
   swapDate?: string;
 }
@@ -68,7 +68,8 @@ export interface DeviceSwapRequest {
 }
 
 export interface DeviceSwapResponse {
-  swapped: boolean;
+  /** True if device was swapped; undefined if API skipped (e.g. 403) */
+  swapped?: boolean;
   swapDate?: string;
 }
 

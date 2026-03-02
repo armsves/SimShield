@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { STORES } from "@/lib/stores";
 
 type Decision = "approve" | "deny" | "clarify" | null;
@@ -9,7 +10,7 @@ type Decision = "approve" | "deny" | "clarify" | null;
 interface ValidationResult {
   decision: Decision;
   score: number;
-  factors: { name: string; impact: string; description: string }[];
+  factors: { name: string; impact: string; description: string; points?: number }[];
   suggestBlockCard?: boolean;
 }
 
@@ -142,6 +143,13 @@ export default function SimShieldPOS() {
         >
           ← Back to home
         </Link>
+        <Image
+          src="/SimShield-logo.png"
+          alt="SimShield"
+          width={140}
+          height={56}
+          className="mx-auto mb-4"
+        />
         <h1 className="text-2xl font-bold text-white tracking-tight">
           SimShield POS
         </h1>
@@ -277,7 +285,33 @@ export default function SimShieldPOS() {
         >
           <h2 className="text-3xl font-bold tracking-wide mb-1">{config.text}</h2>
           <p className="text-lg font-medium mb-1 opacity-95">{config.desc}</p>
-          <p className="text-sm opacity-90 mb-6">Score: {result.score}/100</p>
+          <p className="text-sm opacity-90 mb-4">Final score: {result.score}/100</p>
+
+          {/* Score breakdown */}
+          <div className="mb-6 text-left bg-black/20 rounded-md px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide mb-2 opacity-80">
+              Score breakdown
+            </p>
+            <p className="text-xs opacity-75 mb-2">Base: 50</p>
+            {result.factors.map((f) => (
+              <div
+                key={f.name}
+                className="flex justify-between items-start gap-2 text-xs opacity-90"
+              >
+                <span className="flex-1 min-w-0">{f.description}</span>
+                <span
+                  className={
+                    (f.points ?? 0) >= 0
+                      ? "text-green-200 font-mono flex-shrink-0"
+                      : "text-red-200 font-mono flex-shrink-0"
+                  }
+                >
+                  {f.points !== undefined && f.points >= 0 ? "+" : ""}
+                  {f.points}
+                </span>
+              </div>
+            ))}
+          </div>
 
           {result.suggestBlockCard && result.decision === "deny" && (
             <div className="mb-4 flex items-center justify-center gap-2 bg-black/20 rounded-md px-4 py-2 text-sm">
@@ -309,9 +343,15 @@ export default function SimShieldPOS() {
                 {result.factors.map((f) => (
                   <div
                     key={f.name}
-                    className={`${config.factorBg} rounded-md px-4 py-2 text-sm`}
+                    className={`${config.factorBg} rounded-md px-4 py-2 text-sm flex justify-between items-center gap-3`}
                   >
-                    {f.description}
+                    <span>{f.description}</span>
+                    {f.points !== undefined && (
+                      <span className="font-mono text-sm opacity-90 whitespace-nowrap">
+                        {f.points >= 0 ? "+" : ""}
+                        {f.points}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>

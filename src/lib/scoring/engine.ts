@@ -30,6 +30,7 @@ export function calculateScore(input: ScoringInput): ScoringResult {
       name: "location_match",
       impact: "positive",
       description: "SIM location matches POS - user present at payment point",
+      points: 25,
     });
   } else if (nokiaSignals.locationVerified === false) {
     score -= 35;
@@ -37,6 +38,7 @@ export function calculateScore(input: ScoringInput): ScoringResult {
       name: "location_mismatch",
       impact: "negative",
       description: "SIM location does not match POS - possible remote fraud",
+      points: -35,
     });
   } else if (nokiaSignals.simLocation) {
     // Have location but verification inconclusive (UNKNOWN) or out of range
@@ -45,6 +47,7 @@ export function calculateScore(input: ScoringInput): ScoringResult {
       name: "location_unverifiable",
       impact: "negative",
       description: "Could not confirm SIM is at POS (UNKNOWN / out of range)",
+      points: -10,
     });
   } else {
     // No location data - reduce score, API may have failed
@@ -53,6 +56,7 @@ export function calculateScore(input: ScoringInput): ScoringResult {
       name: "location_unavailable",
       impact: "neutral",
       description: "Could not retrieve SIM location",
+      points: -10,
     });
   }
 
@@ -63,6 +67,7 @@ export function calculateScore(input: ScoringInput): ScoringResult {
       name: "sim_swap_detected",
       impact: "negative",
       description: "Recent SIM swap - elevated fraud risk",
+      points: -40,
     });
   } else if (nokiaSignals.simSwapped === false) {
     score += 10;
@@ -70,6 +75,7 @@ export function calculateScore(input: ScoringInput): ScoringResult {
       name: "no_sim_swap",
       impact: "positive",
       description: "No recent SIM change",
+      points: 10,
     });
   }
 
@@ -80,6 +86,7 @@ export function calculateScore(input: ScoringInput): ScoringResult {
       name: "device_swap_detected",
       impact: "negative",
       description: "Device changed recently",
+      points: -20,
     });
   } else if (nokiaSignals.deviceSwapped === false) {
     score += 5;
@@ -87,16 +94,19 @@ export function calculateScore(input: ScoringInput): ScoringResult {
       name: "no_device_swap",
       impact: "positive",
       description: "Same device in use",
+      points: 5,
     });
   }
 
   // API errors reduce confidence
   if (nokiaSignals.apiErrors.length > 0) {
-    score -= nokiaSignals.apiErrors.length * 5;
+    const penalty = nokiaSignals.apiErrors.length * 5;
+    score -= penalty;
     factors.push({
       name: "api_errors",
       impact: "negative",
       description: `${nokiaSignals.apiErrors.length} API call(s) failed - reduced confidence`,
+      points: -penalty,
     });
   }
 

@@ -28,6 +28,11 @@ export async function checkSimSwap(
       swapDate: data.swapDate,
     };
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // 403 "Access denied for given device" = number not provisioned for this API (e.g. not a hackathon SIM)
+    if (msg.includes("403") && msg.includes("Access denied")) {
+      return { swapped: undefined };
+    }
     console.error("[Nokia] SIM Swap check failed:", err);
     return null;
   }

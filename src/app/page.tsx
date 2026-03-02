@@ -1,10 +1,19 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-[#0a0e14]">
       {/* Hero */}
       <div className="px-4 py-16 md:py-24 text-center">
+        <Image
+          src="/SimShield-logo.png"
+          alt="SimShield"
+          width={200}
+          height={80}
+          className="mx-auto mb-6"
+          priority
+        />
         <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight mb-4">
           SimShield
         </h1>
