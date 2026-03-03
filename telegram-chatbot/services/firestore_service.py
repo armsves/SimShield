@@ -24,6 +24,7 @@ class FirestoreService:
             return doc.to_dict()
         return None
 
+    #NIT this should have an uuid internal key, to prevent a user experiencing several incidents (maybe even close in time)
     def create_incident(self, phone_number: str, alert_type: str, severity: str):
         doc_ref = self.db.collection(self.incidents_collection).document(phone_number)
         doc_ref.set({
