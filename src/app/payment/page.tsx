@@ -155,10 +155,12 @@ export default function SimShieldPOS() {
       }
 
       // Typewriter verdict from factors
-      const lines = data.factors?.map((f: { description: string }) => f.description) || [];
+      const lines = (data.factors?.map((f: { description?: string }) => f.description) || [])
+        .filter((d): d is string => typeof d === "string");
+      const score = typeof data.score === "number" ? data.score : 0;
       const verdict = lines.length > 0
-        ? lines.join(". ") + ` Confidence: ${data.score}%.`
-        : `Score: ${data.score}. Confidence: ${data.score}%.`;
+        ? lines.join(". ") + ` Confidence: ${score}%.`
+        : `Score: ${score}. Confidence: ${score}%.`;
       let idx = 0;
       setVerdictText("");
       const interval = setInterval(() => {

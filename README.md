@@ -47,6 +47,23 @@ npm run dev
 
 Without `NOKIA_RAPID_API_KEY`, the app runs in **sandbox mode** with mock Nokia responses.
 
+### Deploying to Vercel
+
+1. Add env vars in **Project → Settings → Environment Variables**:
+   - `NOKIA_RAPID_API_KEY` (required)
+   - `NOKIA_RAPID_HOST` (optional; default `network-as-code.nokia.rapidapi.com`)
+   - `NOKIA_API_BASE_URL` (optional; default `https://network-as-code.p-eu.rapidapi.com`)
+
+2. Enable vars for **Production** (and Preview if needed).
+
+3. Redeploy after adding variables.
+
+4. **If API calls fail on Vercel but work locally:**
+   - Call `https://your-app.vercel.app/api/debug-nokia` to see env check + raw Nokia error
+   - In DevTools → Network, check the failed `/api/validate-payment` response; `message` contains the Nokia API error
+   - For hackathon/regional APIs, set `NOKIA_RAPID_HOST` to the exact host shown in Nokia API Hub (it may differ from the default)
+   - Ensure the env var name is exactly `NOKIA_RAPID_API_KEY` (not `RAPIDAPI_KEY` etc.)
+
 ## Project Structure
 
 ```
