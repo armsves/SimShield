@@ -51,6 +51,16 @@ application.add_handler(MessageHandler(filters.CONTACT, contact_handler))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Set webhook if BASE_URL is provided
+    base_url = os.getenv("BASE_URL")
+    if base_url:
+        webhook_url = f"{base_url.rstrip('/')}/webhook"
+        logging.info(f"Setting webhook to {webhook_url}")
+        # Note: In a production environment, you might want to verify if the webhook is already set
+        await application.bot.set_webhook(url=webhook_url)
+    else:
+        logging.warning("BASE_URL not set. Webhook will not be configured automatically.")
+
     # Initialize the application
     await application.initialize()
     await application.start()
