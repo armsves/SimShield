@@ -13,26 +13,13 @@ export async function GET(request: NextRequest) {
   const phone = request.nextUrl.searchParams.get("phone") || "+34600123456";
 
   const token = process.env.NOKIA_RAPID_API_KEY ?? process.env.NOKIA_API_TOKEN;
-  // Resolve host same way as client (for debugging)
-  const baseUrl = process.env.NOKIA_API_BASE_URL ?? "https://network-as-code.p-eu.rapidapi.com";
-  let resolvedHost = process.env.NOKIA_RAPID_HOST?.trim();
-  if (!resolvedHost) {
-    try {
-      const u = new URL(baseUrl.startsWith("http") ? baseUrl : `https://${baseUrl}`);
-      resolvedHost = u.hostname.includes("p-eu") || u.hostname.includes("p-")
-        ? u.hostname
-        : "network-as-code.nokia.rapidapi.com";
-    } catch {
-      resolvedHost = "network-as-code.nokia.rapidapi.com";
-    }
-  }
   const envCheck = {
     hasRapidKey: !!process.env.NOKIA_RAPID_API_KEY,
     hasLegacyToken: !!process.env.NOKIA_API_TOKEN,
-    tokenPrefix: token ? token.trim().slice(0, 8) + "..." : "missing",
-    baseUrl: baseUrl.replace(/\/$/, ""),
-    rapidHost: resolvedHost,
-    rapidHostSource: process.env.NOKIA_RAPID_HOST ? "NOKIA_RAPID_HOST" : "derived from baseUrl",
+    tokenPrefix: token ? token.slice(0, 8) + "..." : "missing",
+    baseUrl:
+      process.env.NOKIA_API_BASE_URL ?? "https://network-as-code.p-eu.rapidapi.com (default)",
+    rapidHost: process.env.NOKIA_RAPID_HOST ?? "network-as-code.nokia.rapidapi.com (default)",
   };
 
   try {

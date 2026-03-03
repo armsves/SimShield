@@ -9,34 +9,17 @@ const DEFAULT_RAPID_HOST = "network-as-code.nokia.rapidapi.com";
 
 function getConfig() {
   // Prefer explicit RapidAPI vars; fall back to legacy NOKIA_API_TOKEN
-  const rawKey = process.env.NOKIA_RAPID_API_KEY ?? process.env.NOKIA_API_TOKEN;
-  const apiKey = rawKey?.trim();
-  const explicitHost = process.env.NOKIA_RAPID_HOST?.trim();
-  const baseUrl = (process.env.NOKIA_API_BASE_URL ?? DEFAULT_BASE_URL).replace(
-    /\/$/,
-    ""
-  );
+  const apiKey =
+    process.env.NOKIA_RAPID_API_KEY ?? process.env.NOKIA_API_TOKEN;
+  const rapidHost =
+    process.env.NOKIA_RAPID_HOST ?? DEFAULT_RAPID_HOST;
+  const baseUrl =
+    process.env.NOKIA_API_BASE_URL ?? DEFAULT_BASE_URL;
 
   if (!apiKey) {
     throw new Error(
       "NOKIA_RAPID_API_KEY or NOKIA_API_TOKEN is required. Get your key at https://developer.networkascode.nokia.io/"
     );
-  }
-
-  // When using regional base URL (e.g. p-eu.rapidapi.com), X-RapidAPI-Host must match
-  // the base URL hostname. This fixes "works local, fails on Vercel" issues.
-  let rapidHost = explicitHost;
-  if (!rapidHost) {
-    try {
-      const u = new URL(baseUrl.startsWith("http") ? baseUrl : `https://${baseUrl}`);
-      if (u.hostname.includes("p-eu") || u.hostname.includes("p-")) {
-        rapidHost = u.hostname;
-      } else {
-        rapidHost = DEFAULT_RAPID_HOST;
-      }
-    } catch {
-      rapidHost = DEFAULT_RAPID_HOST;
-    }
   }
 
   return { apiKey, rapidHost, baseUrl };
@@ -48,7 +31,7 @@ export async function nokiaFetch<T>(
 ): Promise<T> {
   const { apiKey, rapidHost, baseUrl } = getConfig();
 
-  const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
   const response = await fetch(url, {
     ...options,
     headers: {
@@ -57,7 +40,6 @@ export async function nokiaFetch<T>(
       "X-RapidAPI-Host": rapidHost,
       ...options.headers,
     },
-    cache: "no-store", // Avoid Vercel/edge caching of API responses
   });
 
   if (!response.ok) {
