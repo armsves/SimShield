@@ -4,10 +4,13 @@ This document outlines the interfaces between the SimShield Frontend (Next.js) a
 
 ## 1. Payment Validation Interface (Internal API)
 
+**Status:** ✅ Fully Implemented (Functional Sandbox/Production)
+
 The frontend calls this endpoint to orchestrate Nokia network signals and calculate a risk score.
 
 *   **Endpoint:** `POST /api/validate-payment`
 *   **Source Code:** `src/app/api/validate-payment/route.ts`
+*   **Implementation Detail:** Uses `src/lib/validator.ts`. Defaults to **Sandbox Mode** if `NOKIA_RAPID_API_KEY` is not set, providing deterministic mock data for testing.
 
 ### Request Payload
 ```json
@@ -48,13 +51,17 @@ The frontend calls this endpoint to orchestrate Nokia network signals and calcul
 
 ## 2. Incident Management Interface (Backend API)
 
-When a transaction is denied or requires clarification, the frontend interfaces with the Telegram Chatbot backend.
+**Status:** ⚠️ Frontend Mocked / Backend Under Development
+
+When a transaction is denied or requires clarification, the frontend is designed to interface with the Telegram Chatbot backend.
 
 ### A. Trigger Security Incident
 Initiates a proactive security check by sending a message to the user via Telegram.
 
 *   **Endpoint:** `POST /api/denial/submit` (Frontend Proxy) -> `POST /api/v1/trigger-alert` (Backend)
 *   **Logic:** Maps the `phone_number` to a `telegram_id` in Firestore and starts an LLM-driven conversation.
+*   **Frontend Proxy:** `src/app/api/denial/submit/route.ts` (**MOCKED**: Returns a base64 ID with encoded resolve time)
+*   **Backend Target:** `POST /api/v1/trigger-alert` (**NOT IMPLEMENTED**: Missing in `main.py`)
 
 **Request Payload:**
 ```json
@@ -69,9 +76,15 @@ Initiates a proactive security check by sending a message to the user via Telegr
 ```
 
 ### B. Incident Status Polling
+
+**Status:** ⚠️ Frontend Mocked / Backend Under Development
+
 Used by the POS/Frontend to check if the user has verified themselves through the chatbot.
 
 *   **Endpoint:** `POST /api/denial/status` (Frontend Proxy) -> `GET /api/v1/incident-status/{phone_number}` (Backend)
+*   **Frontend Proxy:** `src/app/api/denial/status/route.ts` (**MOCKED**: Decodes the base64 ID to simulate polling delay)
+*   **Backend Target:** `GET /api/v1/incident-status/{phone_number}` (**NOT IMPLEMENTED**: Missing in `main.py`)
+
 
 **Response Payload:**
 ```json
