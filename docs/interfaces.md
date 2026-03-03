@@ -51,7 +51,7 @@ The frontend calls this endpoint to orchestrate Nokia network signals and calcul
 
 ## 2. Incident Management Interface (Backend API)
 
-**Status:** ⚠️ Frontend Mocked / Backend Under Development
+**Status:** ⚠️ Frontend Mocked / Backend Implemented
 
 When a transaction is denied or requires clarification, the frontend is designed to interface with the Telegram Chatbot backend.
 
@@ -61,7 +61,7 @@ Initiates a proactive security check by sending a message to the user via Telegr
 *   **Endpoint:** `POST /api/denial/submit` (Frontend Proxy) -> `POST /api/v1/trigger-alert` (Backend)
 *   **Logic:** Maps the `phone_number` to a `telegram_id` in Firestore and starts an LLM-driven conversation.
 *   **Frontend Proxy:** `src/app/api/denial/submit/route.ts` (**MOCKED**: Returns a base64 ID with encoded resolve time)
-*   **Backend Target:** `POST /api/v1/trigger-alert` (**NOT IMPLEMENTED**: Missing in `main.py`)
+*   **Backend Target:** `POST /api/v1/trigger-alert` (**✅ IMPLEMENTED**: In `main.py`)
 
 **Request Payload:**
 ```json
@@ -77,13 +77,13 @@ Initiates a proactive security check by sending a message to the user via Telegr
 
 ### B. Incident Status Polling
 
-**Status:** ⚠️ Frontend Mocked / Backend Under Development
+**Status:** ⚠️ Frontend Mocked / Backend Implemented
 
 Used by the POS/Frontend to check if the user has verified themselves through the chatbot.
 
 *   **Endpoint:** `POST /api/denial/status` (Frontend Proxy) -> `GET /api/v1/incident-status/{phone_number}` (Backend)
 *   **Frontend Proxy:** `src/app/api/denial/status/route.ts` (**MOCKED**: Decodes the base64 ID to simulate polling delay)
-*   **Backend Target:** `GET /api/v1/incident-status/{phone_number}` (**NOT IMPLEMENTED**: Missing in `main.py`)
+*   **Backend Target:** `GET /api/v1/incident-status/{phone_number}` (**✅ IMPLEMENTED**: In `main.py`)
 
 
 **Response Payload:**
