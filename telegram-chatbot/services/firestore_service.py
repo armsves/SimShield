@@ -2,10 +2,11 @@ import os
 from google.cloud import firestore
 
 class FirestoreService:
-    def __init__(self, project_id: str = None):
+    def __init__(self, project_id: str = None, database_id: str = None):
         # Use provided project_id, or env var, or let ADC find it
         self.project_id = project_id or os.getenv("GCLOUD_PROJECT_ID")
-        self.db = firestore.Client(project=self.project_id)
+        self.database_id = database_id or os.getenv("FIRESTORE_DATABASE_ID", "(default)")
+        self.db = firestore.Client(project=self.project_id, database=self.database_id)
         self.users_collection = "users"
         self.incidents_collection = "incidents"
         self.chats_collection = "chat_history"

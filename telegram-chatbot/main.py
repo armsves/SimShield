@@ -8,7 +8,15 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from services.firestore_service import FirestoreService
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load environment variables based on ENV variable
+env = os.getenv("ENV", "TEST").upper()
+env_file = f".env.{env}"
+if os.path.exists(env_file):
+    logging.info(f"Loading environment from {env_file}")
+    load_dotenv(env_file)
+else:
+    logging.info("Loading environment from default .env")
+    load_dotenv()
 
 # Configure logging
 logging.basicConfig(
