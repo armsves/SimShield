@@ -1,7 +1,8 @@
 import os
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, HTTPException
+from pydantic import BaseModel
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from services.firestore_service import FirestoreService
@@ -17,6 +18,15 @@ logging.basicConfig(
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 firestore_service = FirestoreService()
+
+# API Models
+class TriggerAlertRequest(BaseModel):
+    phone_number: str
+    alert_type: str
+    severity: str
+    amountCents: int = None
+    posLatitude: float = None
+    posLongitude: float = None
 
 # Initialize Telegram Application
 application = ApplicationBuilder().token(TOKEN).build()
@@ -81,3 +91,40 @@ async def webhook(request: Request):
     update = Update.de_json(data, application.bot)
     await application.process_update(update)
     return Response(status_code=200)
+
+@app.post("/api/v1/trigger-alert", status_code=202)
+async def trigger_alert(request: TriggerAlertRequest):
+    user = firestore_service.get_user_by_phone(request.phone_number)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    telegram_id = user["telegram_id"]
+    
+    # Create incident in Firestore
+    firestore_service.create_incident(
+        request.phone_number, 
+        request.alert_type, 
+        request.severity
+    )
+    
+    # Notify user via Telegram
+    message = f"🚨 *SimShield Alert: {request.alert_type}* 🚨\n\n"
+    if request.alert_type == "PAYMENT_DENIAL":
+        amount_str = f" of {request.amountCents/100:.2f}€" if request.amountCents else ""
+        message += f"We detected a suspicious payment attempt{amount_str}. Was this you?"
+    elif request.alert_type == "SIM_SWAP_DETECTED":
+        message += "We detected a suspicious SIM swap activity on your line. Please confirm your identity."
+    else:
+        message += "Suspicious activity detected. Please review your account."
+        
+    await application.bot.send_message(chat_id=telegram_id, text=message, parse_mode="Markdown")
+    
+    return {"status": "alert_triggered", "phone_number": request.phone_number}
+
+@app.get("/api/v1/incident-status/{phone_number}")
+async def get_incident_status(phone_number: str):
+    incident = firestore_service.get_incident(phone_number)
+    if not incident:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    
+    return incident

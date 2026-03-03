@@ -32,6 +32,7 @@ class FirestoreService:
             "alert_type": alert_type,
             "severity": severity,
             "status": "pending",
+            "approved": False,
             "last_update": firestore.SERVER_TIMESTAMP,
             "summary": ""
         })
